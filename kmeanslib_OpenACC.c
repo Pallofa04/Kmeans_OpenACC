@@ -217,71 +217,66 @@ void kmeans(uint8_t k, cluster* centroides, uint32_t num_pixels, rgb* pixels){
         uint32_t * points_aux = malloc(k * sizeof(uint32_t));
 
 
-	// K-means iterative procedures start
-	printf("STEP 3: Updating centroids\n\n");
-	i = 0;
-        do
-        {
-
-                // Reset centroids
-                for(j = 0; j < k; j++)
-        {
-                        centroides[j].media_r = 0;
-                        centroides[j].media_g = 0;
-                        centroides[j].media_b = 0;
-                        centroides[j].num_puntos = 0;
-                        // també s'omplen de zeros les variables auxiliars
-                        r_aux[j] = 0;
-                        g_aux[j] = 0;
-                        b_aux[j] = 0;
-			points_aux[j] = 0;
-                }
-
-
-                // Find closest cluster for each pixel
-                for(j = 0; j < num_pixels; j++)
-        {
-                        // Es dur a terme les inicialitzacions funció find_closest_centroid
-                        uint32_t min = UINT32_MAX, dis_aux;
-                        rgb* p = &pixels[j]; //apuntador a pixels[j]
-                        uint8_t m;
-                        int16_t diffR, diffG, diffB;
-
-                        // I els càlculs (trobar el index del cluster més aprop, que minimtza la distància)
-                        for (m = 0; m < k; m++)
-                {
-                                diffR = centroides[m].r - p->r;
-                                diffG = centroides[m].g - p->g;
-                                diffB = centroides[m].b - p->b;
-                                dis_aux = diffR*diffR + diffG*diffG + diffB*diffB;
-
-                                if(dis_aux < min)
-                                {
-                                        min = dis_aux;
-                                        pixels_aux[j] = m;
-                                }
-                }
-        }
-
-                // sumem els valors
-                for (j = 0; j < num_pixels; j++)
-                        // obtenim l'índex del cluster més proper del píxel
-        {               uint32_t closest = pixels_aux[j]; 
-                        // sumem els colors del píxel proper
-                        r_aux[closest] += pixels[j].r;
-                        g_aux[closest] += pixels[j].g;
-                        b_aux[closest] += pixels[j].b;
-                        points_aux[closest]++;
-        }
-
-                // S'assignen les variables auxiliars a les originals
-                for (j = 0; j < k; j++)
-        {
-                        centroides[j].media_r = r_aux[j];
-                        centroides[j].media_g = g_aux[j];
-                        centroides[j].media_b = b_aux[j];
-                        centroides[j].num_puntos = points_aux[j];
-        }
+  // K-means iterative procedures start
+  printf("STEP 3: Updating centroids\n\n");
+  i = 0;
+  #pragma acc data copyin(pixels[0:num_pixels]) copyin(centroides[0:k]) \
+          copy(r_aux[0:k], g_aux[0:k], b_aux[0:k], points_aux[0:k]) 
+  {
+      do {
+          // Reset centroids
+          #pragma acc kernels
+          for(j = 0; j < k; j++) {
+              centroides[j].media_r = 0;
+              centroides[j].media_g = 0;
+              centroides[j].media_b = 0;
+              centroides[j].num_puntos = 0;
+              // también se llenan de ceros las variables auxiliares
+              r_aux[j] = 0;
+              g_aux[j] = 0;
+              b_aux[j] = 0;
+              points_aux[j] = 0;
+          }
+  
+          // Find closest cluster for each pixel
+          #pragma acc kernels
+          for(j = 0; j < num_pixels; j++) {
+              uint32_t min = UINT32_MAX, dis_aux;
+              rgb* p = &pixels[j];
+              uint8_t m;
+              int16_t diffR, diffG, diffB;
+  
+              for (m = 0; m < k; m++) {
+                  diffR = centroides[m].r - p->r;
+                  diffG = centroides[m].g - p->g;
+                  diffB = centroides[m].b - p->b;
+                  dis_aux = diffR*diffR + diffG*diffG + diffB*diffB;
+  
+                  if(dis_aux < min) {
+                      min = dis_aux;
+                      pixels_aux[j] = m;
+                  }
+              }
+          }
+  
+          // sum values
+          #pragma acc kernels
+          for (j = 0; j < num_pixels; j++) {
+              uint32_t closest = pixels_aux[j];
+              r_aux[closest] += pixels[j].r;
+              g_aux[closest] += pixels[j].g;
+              b_aux[closest] += pixels[j].b;
+              points_aux[closest]++;
+          }
+  
+          // Assign auxiliary variables to the originals
+          #pragma acc kernels
+          for (j = 0; j < k; j++) {
+              centroides[j].media_r = r_aux[j];
+              centroides[j].media_g = g_aux[j];
+              centroides[j].media_b = b_aux[j];
+              centroides[j].num_puntos = points_aux[j];
+          }
 
 		// Update centroids & check stop condition
 		condition = 0;
